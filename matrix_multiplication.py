@@ -1,95 +1,124 @@
 import numpy as np
 
-def matrix_multiply(A, B, L):
+def block_matrix_multiply(n, m, p, L, get_block):
     """
-    Multiply matrices A and B using divide-and-conquer approach.
-    Only perform direct multiplication if dimensions are <= L.
+    Multiply matrices A and B using block approach.
+    Matrices are divided into blocks of size LxL.
     
     Parameters:
     -----------
-    A, B : numpy.ndarray
-        Input matrices to multiply
+    n, m, p : int
+        Dimensions of matrices (A is n×m, B is m×p)
     L : int
-        Threshold for direct multiplication
+        Size of blocks for matrix division
+    get_block : callable
+        Function that returns a block of either A or B matrix
+        Signature: get_block(matrix_name, row_start, row_end, col_start, col_end)
+        matrix_name should be either 'A' or 'B'
         
     Returns:
     --------
     C : numpy.ndarray
         Result matrix C = A×B
     """
-    # Get dimensions
-    n, m = A.shape
-    m2, p = B.shape
+    # Initialize the result matrix
+    C = np.zeros((n, p))
     
-    # Check if matrices can be multiplied
-    if m != m2:
-        raise ValueError("Matrix dimensions incompatible for multiplication")
-    
-    # Base case: if matrices are small enough, use standard multiplication
-    if n <= L and m <= L and p <= L:
-        return A @ B
-    
-    # Special case: if any dimension is 1, use standard multiplication
-    if n == 1 or m == 1 or p == 1:
-        return A @ B
-    
-    # Divide matrices into blocks
-    n_half = n // 2
-    m_half = m // 2
-    p_half = p // 2
-    
-    # Split A
-    A11 = A[:n_half, :m_half]
-    A12 = A[:n_half, m_half:]
-    A21 = A[n_half:, :m_half]
-    A22 = A[n_half:, m_half:]
-    
-    # Split B
-    B11 = B[:m_half, :p_half]
-    B12 = B[:m_half, p_half:]
-    B21 = B[m_half:, :p_half]
-    B22 = B[m_half:, p_half:]
-    
-    # Recursive multiplication of blocks
-    C11 = matrix_multiply(A11, B11, L) + matrix_multiply(A12, B21, L)
-    C12 = matrix_multiply(A11, B12, L) + matrix_multiply(A12, B22, L)
-    C21 = matrix_multiply(A21, B11, L) + matrix_multiply(A22, B21, L)
-    C22 = matrix_multiply(A21, B12, L) + matrix_multiply(A22, B22, L)
-    
-    # Combine blocks to form C
-    top = np.hstack((C11, C12))
-    bottom = np.hstack((C21, C22))
-    C = np.vstack((top, bottom))
+    # Iterate through blocks of C
+    for i in range(0, n, L):
+        i_end = min(i + L, n)
+        for j in range(0, p, L):
+            j_end = min(j + L, p)
+            
+            # Initialize block of C
+            C_block = np.zeros((i_end - i, j_end - j))
+            
+            # Multiply the corresponding blocks from A and B
+            for k in range(0, m, L):
+                k_end = min(k + L, m)
+                
+                # Get blocks from A and B
+                A_block = get_block('A', i, i_end, k, k_end)
+                B_block = get_block('B', k, k_end, j, j_end)
+                
+                # Multiply and accumulate result
+                C_block += A_block @ B_block
+            
+            # Set the result in C
+            C[i:i_end, j:j_end] = C_block
     
     return C
 
-# Example usage
-if __name__ == "__main__":
-    # Set the threshold L
-    L = 64
-    
-    n = 256
-    A = np.random.rand(n, n)
-    B = np.random.rand(n, n)
-    
-    print(f"Multiplying {n}x{n} matrices with threshold L={L}")
-    print(f"Matrix A: {A}")
-    print(f"Matrix B: {B}")
-    
-    # Compute C using divide-and-conquer approach
+# Example usage with blocks
+def example():
     import time
-    start_time = time.time()
-    C = matrix_multiply(A, B, L)
-    dc_time = time.time() - start_time
-    print(f"Divide-and-conquer time: {dc_time:.4f} seconds")
-    print(f"Matric C: {C}")
 
-    # Compare with NumPy's built-in multiplication
+    # Matrix dimensions
+    n = 1024  # Rows A
+    m = 1024  # Columns A | Rows B
+    p = 1024  # Columns B
+
+    # Block size L
+    L = 64
+
+    # Create full matrices for verification
+    full_A = np.random.rand(n, m)
+    full_B = np.random.rand(m, p)
+
+    # Dictionaries to store blocks
+    A_blocks = {}
+    B_blocks = {}
+
+    # Divide matrices into blocks of fixed size L
+    print(f"Dividing matrices into blocks of size {L}×{L}...")
+    for i in range(0, n, L):
+        i_end = min(i + L, n)
+        for j in range(0, m, L):
+            j_end = min(j + L, m)
+            # Blocks for A
+            A_blocks[(i, i_end, j, j_end)] = full_A[i:i_end, j:j_end].copy()
+
+    for i in range(0, m, L):
+        i_end = min(i + L, m)
+        for j in range(0, p, L):
+            j_end = min(j + L, p)
+            # Blocks for B
+            B_blocks[(i, i_end, j, j_end)] = full_B[i:i_end, j:j_end].copy()
+
+    # Function to get blocks
+    def get_block(matrix_name, row_start, row_end, col_start, col_end):
+        if matrix_name == 'A':
+            key = (row_start, row_end, col_start, col_end)
+            if key in A_blocks:
+                return A_blocks[key]
+            else:
+                print(f"Warning: Block A[{row_start}:{row_end}, {col_start}:{col_end}] not found")
+                return np.zeros((row_end - row_start, col_end - col_start))
+        else:  # matrix_name == 'B'
+            key = (row_start, row_end, col_start, col_end)
+            if key in B_blocks:
+                return B_blocks[key]
+            else:
+                print(f"Warning: Block B[{row_start}:{row_end}, {col_start}:{col_end}] not found")
+                return np.zeros((row_end - row_start, col_end - col_start))
+
+    # Multiplication using the block approach
+    print(f"Multiplying matrices {n}×{m} and {m}×{p} using blocks {L}×{L}")
     start_time = time.time()
-    C_numpy = A @ B
+    C = block_matrix_multiply(n, m, p, L, get_block)
+    block_time = time.time() - start_time
+    print(f"Block multiplication time: {block_time:.4f} seconds")
+
+    # Comparison with NumPy
+    start_time = time.time()
+    C_numpy = full_A @ full_B
     numpy_time = time.time() - start_time
     print(f"NumPy time: {numpy_time:.4f} seconds")
-    
-    # Verify correctness
+
+    # Check correctness
     diff = np.max(np.abs(C - C_numpy))
     print(f"Maximum difference: {diff}")
+
+# Run the realistic example
+if __name__ == "__main__":
+    example()

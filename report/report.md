@@ -1,66 +1,71 @@
-# Множення Матриць
+# Блочне Множення Матриць
 
 ### Виконав Пристайчук Дмитро, ММШІ-1
 
-#### Крок 1: Базовий випадок рекурсії
+Цей звіт описує алгоритм блочного множення матриць, реалізований у Python з використанням NumPy. Алгоритм ділить матриці на блоки фіксованого розміру `L x L` і виконує множення на рівні цих блоків.
 
-Якщо розміри матриць `A` (n x m) та `B` (m x p) менші або рівні пороговому значенню `L` (тобто `n <= L`, `m <= L`, `p <= L`), використовується стандартне множення матриць NumPy. Також стандартне множення використовується, якщо будь-який з розмірів дорівнює 1.
+#### Крок 1: Ініціалізація результуючої матриці
+Створюється нульова матриця `C` розміром `n x p`, де `n` - кількість рядків матриці `A`, а `p` - кількість стовпців матриці `B`.
 
 ```python
-# Base case: if matrices are small enough, use standard multiplication
-if n <= L and m <= L and p <= L:
-    return A @ B
-
-# Special case: if any dimension is 1, use standard multiplication
-if n == 1 or m == 1 or p == 1:
-    return A @ B
+# Initialize the result matrix
+C = np.zeros((n, p))
 ```
 
-#### Крок 2: Розділення матриць на блоки
+#### Крок 2: Ітерація по блоках матриці C
 
-Якщо матриці більші за порогове значення, вони розділяються на чотири підблоки приблизно однакового розміру.
+Алгоритм ітерує по блоках результуючої матриці `C`. Зовнішні цикли проходять по рядках (`i`) та стовпцях (`j`) з кроком `L`.
 
 ```python
-# Divide matrices into blocks
-n_half = n // 2
-m_half = m // 2
-p_half = p // 2
-
-# Split A
-A11 = A[:n_half, :m_half]
-A12 = A[:n_half, m_half:]
-A21 = A[n_half:, :m_half]
-A22 = A[n_half:, m_half:]
-
-# Split B
-B11 = B[:m_half, :p_half]
-B12 = B[:m_half, p_half:]
-B21 = B[m_half:, :p_half]
-B22 = B[m_half:, p_half:]
+# Iterate through blocks of C
+for i in range(0, n, L):
+    i_end = min(i + L, n)
+    for j in range(0, p, L):
+        j_end = min(j + L, p)
+        # ... process block C[i:i_end, j:j_end] ...
 ```
 
-#### Крок 3: Рекурсивне множення блоків
+#### Крок 3: Обчислення кожного блоку C
 
-Виконується рекурсивне множення підблоків згідно з формулами блочного множення матриць:
+Для кожного блоку `C[i:i_end, j:j_end]`, ініціалізується нульовий блок `C_block`. Потім виконується ітерація по відповідних блоках матриць `A` та `B` (внутрішній цикл по `k` з кроком `L`). Важливо зазначити, що функція множення не має доступу до повних матриць `A` та `B` одночасно. Замість цього, вона отримує необхідні блоки матриць `A` та `B` за запитом через функцію `get_block`. Ці матриці заздалегідь розділені на блоки розміром не більше `L x L`.
 
 ```python
-# Recursive multiplication of blocks
-C11 = matrix_multiply(A11, B11, L) + matrix_multiply(A12, B21, L)
-C12 = matrix_multiply(A11, B12, L) + matrix_multiply(A12, B22, L)
-C21 = matrix_multiply(A21, B11, L) + matrix_multiply(A22, B21, L)
-C22 = matrix_multiply(A21, B12, L) + matrix_multiply(A22, B22, L)
+        # Initialize block of C
+        C_block = np.zeros((i_end - i, j_end - j))
+
+        # Multiply the corresponding blocks from A and B
+        for k in range(0, m, L):
+            k_end = min(k + L, m)
+            # ... fetch and multiply A_block and B_block ...
 ```
 
-#### Крок 4: Об'єднання блоків результату
+#### Крок 4: Отримання та множення блоків A та B
 
-Отримані блоки `C11`, `C12`, `C21`, `C22` об'єднуються для формування результуючої матриці `C`.
+На кожній ітерації внутрішнього циклу (`k`) отримуються відповідні блоки `A_block` (розміром `(i_end-i) x (k_end-k)`) та `B_block` (розміром `(k_end-k) x (j_end-j)`) за допомогою функції `get_block`. Ці блоки перемножуються стандартним множенням матриць (`@`), і результат додається до `C_block`.
 
 ```python
-# Combine blocks to form C
-top = np.hstack((C11, C12))
-bottom = np.hstack((C21, C22))
-C = np.vstack((top, bottom))
+            # Get blocks from A and B
+            A_block = get_block('A', i, i_end, k, k_end)
+            B_block = get_block('B', k, k_end, j, j_end)
 
+            # Multiply and accumulate result
+            C_block += A_block @ B_block
+```
+
+#### Крок 5: Запис результату в матрицю C
+
+Після завершення внутрішнього циклу (`k`), обчислений блок `C_block` записується у відповідне місце в результуючій матриці `C`.
+
+```python
+        # Set the result in C
+        C[i:i_end, j:j_end] = C_block
+```
+
+#### Крок 6: Повернення результату
+
+Після обробки всіх блоків функція повертає повну результуючу матрицю `C`.
+
+```python
 return C
 ```
 
@@ -69,75 +74,64 @@ return C
 ```python
 import numpy as np
 
-def matrix_multiply(A, B, L):
+def block_matrix_multiply(n, m, p, L, get_block):
     """
-    Multiply matrices A and B using divide-and-conquer approach.
-    Only perform direct multiplication if dimensions are <= L.
+    Multiply matrices A and B using block approach.
+    Matrices are divided into blocks of size LxL.
 
     Parameters:
     -----------
-    A, B : numpy.ndarray
-        Input matrices to multiply
+    n, m, p : int
+        Dimensions of matrices (A is n×m, B is m×p)
     L : int
-        Threshold for direct multiplication
+        Size of blocks for matrix division
+    get_block : callable
+        Function that returns a block of either A or B matrix
+        Signature: get_block(matrix_name, row_start, row_end, col_start, col_end)
+        matrix_name should be either 'A' or 'B'
 
     Returns:
     --------
     C : numpy.ndarray
         Result matrix C = A×B
     """
-    # Get dimensions
-    n, m = A.shape
-    m2, p = B.shape
+    # Initialize the result matrix
+    C = np.zeros((n, p))
 
-    # Check if matrices can be multiplied
-    if m != m2:
-        raise ValueError("Matrix dimensions incompatible for multiplication")
+    # Iterate through blocks of C
+    for i in range(0, n, L):
+        i_end = min(i + L, n)
+        for j in range(0, p, L):
+            j_end = min(j + L, p)
 
-    # Base case: if matrices are small enough, use standard multiplication
-    if n <= L and m <= L and p <= L:
-        return A @ B
+            # Initialize block of C
+            C_block = np.zeros((i_end - i, j_end - j))
 
-    # Special case: if any dimension is 1, use standard multiplication
-    if n == 1 or m == 1 or p == 1:
-        return A @ B
+            # Multiply the corresponding blocks from A and B
+            for k in range(0, m, L):
+                k_end = min(k + L, m)
 
-    # Divide matrices into blocks
-    n_half = n // 2
-    m_half = m // 2
-    p_half = p // 2
+                # Get blocks from A and B
+                A_block = get_block('A', i, i_end, k, k_end)
+                B_block = get_block('B', k, k_end, j, j_end)
 
-    # Split A
-    A11 = A[:n_half, :m_half]
-    A12 = A[:n_half, m_half:]
-    A21 = A[n_half:, :m_half]
-    A22 = A[n_half:, m_half:]
+                # Multiply and accumulate result
+                C_block += A_block @ B_block
 
-    # Split B
-    B11 = B[:m_half, :p_half]
-    B12 = B[:m_half, p_half:]
-    B21 = B[m_half:, :p_half]
-    B22 = B[m_half:, p_half:]
-
-    # Recursive multiplication of blocks
-    C11 = matrix_multiply(A11, B11, L) + matrix_multiply(A12, B21, L)
-    C12 = matrix_multiply(A11, B12, L) + matrix_multiply(A12, B22, L)
-    C21 = matrix_multiply(A21, B11, L) + matrix_multiply(A22, B21, L)
-    C22 = matrix_multiply(A21, B12, L) + matrix_multiply(A22, B22, L)
-
-    # Combine blocks to form C
-    top = np.hstack((C11, C12))
-    bottom = np.hstack((C21, C22))
-    C = np.vstack((top, bottom))
+            # Set the result in C
+            C[i:i_end, j:j_end] = C_block
 
     return C
 ```
 
-### Результати виконання
+### Результати виконання (Приклад)
+
+Результати для множення матриць 1024x1024 з розміром блоку L=64:
 
 ```
-Multiplying 256x256 matrices with threshold L=64
-Divide-and-conquer time: 0.0032 seconds
-NumPy time: 0.0005 seconds
-Maximum difference: 1.4210854715202004e-13
+Dividing matrices into blocks of size 64×64...
+Multiplying matrices 1024×1024 and 1024×1024 using blocks 64×64
+Block multiplication time: 0.0306 seconds
+NumPy time: 0.0076 seconds
+Maximum difference: 1.19e-12
 ```
